@@ -23,7 +23,7 @@ public class DistancePosition {
         return y2;
     }
     
-    public int getDistane() {
+    public int getDistance() {
         return distance;
     }
 
