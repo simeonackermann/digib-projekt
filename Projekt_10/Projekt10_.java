@@ -17,8 +17,6 @@ import interpolators.BilinearInterpolator;
 import interpolators.PixelInterpolator;
 import mappings.ProjectiveMapping;
 
-
-//public class Projekt10_ implements PlugInFilter {	
 public class Projekt10_ implements PlugIn {
 	
 	ImagePlus imp;
