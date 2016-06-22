@@ -6,9 +6,11 @@ import mappings.ProjectiveMapping;
 import ij.gui.*;
 import java.awt.*;
 import java.awt.geom.Point2D;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import ij.plugin.ContrastEnhancer;
+import ij.plugin.PlugIn;
 import ij.plugin.filter.*;
 //import ij.plugin.Thresholder;
 import interpolators.BilinearInterpolator;
@@ -16,28 +18,96 @@ import interpolators.PixelInterpolator;
 import mappings.ProjectiveMapping;
 
 
-public class Projekt10_ implements PlugInFilter {	
+//public class Projekt10_ implements PlugInFilter {	
+public class Projekt10_ implements PlugIn {
 	
 	ImagePlus imp;
 	ImagePlus resultImage;
 	private ImagePlus impOriginal;
 	private int thresholdValue = 80;
-	//private int chessFieldVarianz = 3;
 	private int minFieldHeight = 1;
 	private int minFieldWidth = 5;
 	private int saturation = 25;
+	
 	int xFields = 4;
     int yFields = 6;
+    File[] listOfFiles;
+    String imagesFolder = "/Source/";
+    String resultFolder = "/Result/";
 
-	public int setup(String arg, ImagePlus imp) {
-		impOriginal = imp;
-		return DOES_ALL;
-	}
+	/*public int setup(String arg, ImagePlus imp) {
 
-	public void run(ImageProcessor ip) {
+		File folder = new File(imagesFolder);
+		listOfFiles = folder.listFiles();
 		
+		//impOriginal = imp;
+		return DOES_ALL;
+	}*/
+    
+	public void run(String arg) {
+		// arg is empty... ;(
+		//IJ.log("arg:"+arg);
+		
+		String args = Macro.getOptions();
+		
+		if ( args == null ) { // direclty call from imagej menu
+			imp = WindowManager.getCurrentImage();
+			run();
+			resultImage.show();
+			return; 
+		}			
+		
+		for (String argsp : args.split(" ")) {
+			String[] argument = argsp.split("=");
+			
+			if ( argument[0].equals("xs") ) {
+				IJ.log("Its xfileds...");
+				this.xFields = Integer.parseInt(argument[1]);
+			} 
+			if (argument[0].equals("ys") ) {
+				yFields = Integer.parseInt(argument[1]);
+			} 
+			if (argument[0].equals("source") ) {
+				imagesFolder = argument[1];
+			} 
+			if (argument[0].equals("result") ) {
+				resultFolder = argument[1];
+			}
+		}
+		
+		File folder = new File(imagesFolder);
+		
+		if ( ! folder.isDirectory() || !(new File(resultFolder)).isDirectory() ) {
+			IJ.log("Source or Results folder not given! Call: Projekt10 xs=4 ys=6 source=/path/to/sourceFolder result=/path/to/resultFolder");
+			return;
+		}
+		
+		listOfFiles = folder.listFiles();
+		
+		IJ.log("# Options:\n- x-Fields: "+xFields+"\n- y-Fields:"+yFields+"\n- Images Folder: "+imagesFolder+"\n- Results Folder: "+resultFolder);
+		IJ.log("\n# Task: Transform "+listOfFiles.length+" files:");
+		
+		for (File file : listOfFiles) {
+		    if (file.isFile()) {
+		        String[] filename = file.getName().split("\\.");
+		    	
+		    	imp = IJ.openImage(file.getAbsolutePath());
+		    	
+		    	IJ.log("transforming "+file.getName()+"...");
+		    	run();
+		    	
+		    	
+		    	IJ.save(resultImage, resultFolder+filename[0]+"-transformed."+filename[1]);
+		    	
+		    }
+		}
+		IJ.log("done.");
+		
+	}
+	
+	private void run() {
 		// optimize image
-		ImagePlus tmpImp = optimizeImg(impOriginal.duplicate() );
+		ImagePlus tmpImp = optimizeImg(imp.duplicate() );
 		
 		// set as current image
 		//optImp.setActivated();
@@ -71,7 +141,7 @@ public class Projekt10_ implements PlugInFilter {
 		}
         hHits = hHitsFiltered;
         
-        // filter certical matches, if they dont cross any horizontal match
+        // filter vertical matches, if they dont cross any horizontal match
         ArrayList<Line> vHitsFiltered = new ArrayList<Line>();
         for (int i = 0; i < vHits.size(); i++) {
         	Line vLine = vHits.get(i);
@@ -91,7 +161,7 @@ public class Projekt10_ implements PlugInFilter {
         		vHitsFiltered.add(vHits.get(i));
         	}
 		}
-        vHits = vHitsFiltered;
+        vHits = vHitsFiltered;        
         
         if ( vHits.size() == 0 || hHits.size() == 0 ) {
         	// -> not found
@@ -129,10 +199,6 @@ public class Projekt10_ implements PlugInFilter {
         ps[2] = new Point( hHits.get(hHits.size()-1).x2, vHits.get(vHits.size()-1).y2 );
         ps[3] = new Point( hHits.get(0).x1, vHits.get(0).y2 );
         
-        for (Point2D point2d : ps) {
-			IJ.log("ps x="+point2d.getX()+", y="+point2d.getY());
-		}
-        
         Point2D[] qs = new Point2D[4];
         int yStretch= (int) ( ((float)yFields/(float)xFields) * (ps[2].getX()-ps[3].getX()));
 		//IJ.log(((float)yFields/(float)xFields)+" - "+(ps[2].getX()-ps[3].getX())+" = "+yStretch);
@@ -144,16 +210,14 @@ public class Projekt10_ implements PlugInFilter {
 		
 		//ImagePlus resultImp = projectiveTransforming(impOriginal, ps, qs);
 		projectiveTransforming(ps, qs);
-		resultImage.show();
+		//resultImage.show();
 		
 		// show tmp image
-		tmpImp.setTitle("image filtered");
-		tmpImp.show();
+		//tmpImp.setTitle("image filtered");
+		//tmpImp.show();
 	}
 	
 	private ImagePlus optimizeImg(ImagePlus imp) {
-		
-		
 		// convert to gray
         ImageConverter ic = new ImageConverter(imp);
         ic.convertToGray8();
@@ -164,12 +228,10 @@ public class Projekt10_ implements PlugInFilter {
         ContrastEnhancer ce = new ContrastEnhancer();
         ce.stretchHistogram(ip, saturation);
         
-        
         // binarisize
      	//ip.autoThreshold();
      	//ip.threshold(thresholdValue); // TODO: calc opt threshold
      	//ip.setBinaryThreshold();
-		
         
         return imp;
 	}
@@ -410,11 +472,11 @@ public class Projekt10_ implements PlugInFilter {
 		
 		ProjectiveMapping map = ProjectiveMapping.makeMapping(ps[0],ps[1],ps[2],ps[3],qs[0],qs[1],qs[2],qs[3]);
 
-        ImageProcessor actualIP = impOriginal.getProcessor();
+        ImageProcessor actualIP = imp.getProcessor();
         ImageProcessor transformedIP = null;
 
-        int targetWidth = impOriginal.getWidth();
-        int targetHeight = impOriginal.getHeight();        
+        int targetWidth = imp.getWidth();
+        int targetHeight = imp.getHeight();        
                  
         if (actualIP instanceof ByteProcessor)
            transformedIP = new ByteProcessor(targetWidth,targetHeight);
@@ -435,7 +497,7 @@ public class Projekt10_ implements PlugInFilter {
             map.transformTo(fp1, fp2, ipol);
             transformedIP.setPixels(i, fp2);                 // convert back from float (unless ip is a FloatProcessor)
         }
-        resultImage = new ImagePlus("Projekt 10 - Result", transformedIP);        
+        resultImage = new ImagePlus("Projekt 10 - Result", transformedIP);
         //return new ImagePlus("Projekt 10 - Result", transformedIP);
 		
 	}
@@ -452,4 +514,5 @@ public class Projekt10_ implements PlugInFilter {
 			this.count = count;
 		}
 	}
+
 }
