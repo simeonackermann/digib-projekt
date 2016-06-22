@@ -23,6 +23,7 @@ public class Projekt10_ implements PlugIn {
 	
 	ImagePlus imp;
 	ImagePlus resultImage;
+	ImagePlus linescanImage;
 	private ImagePlus impOriginal;
 	private int thresholdValue = 80;
 	private int minFieldHeight = 1;
@@ -35,25 +36,21 @@ public class Projekt10_ implements PlugIn {
     String imagesFolder = "/Source/";
     String resultFolder = "/Result/";
 
-	/*public int setup(String arg, ImagePlus imp) {
-
-		File folder = new File(imagesFolder);
-		listOfFiles = folder.listFiles();
-		
-		//impOriginal = imp;
-		return DOES_ALL;
-	}*/
-    
-	public void run(String arg) {
-		// arg is empty... ;(
+    public void run(String arg) {
+		// damn, arg is empty... ;(
 		//IJ.log("arg:"+arg);
 		
 		String args = Macro.getOptions();
 		
 		if ( args == null ) { // direclty call from imagej menu
 			imp = WindowManager.getCurrentImage();
-			run();
-			resultImage.show();
+			if ( imp == null ) {
+				IJ.showMessage("No open image found!");
+			} else {
+				run();
+				linescanImage.show();
+				resultImage.show();
+			}
 			return; 
 		}			
 		
@@ -94,10 +91,14 @@ public class Projekt10_ implements PlugIn {
 		    	imp = IJ.openImage(file.getAbsolutePath());
 		    	
 		    	IJ.log("transforming "+file.getName()+"...");
-		    	run();
+		    	Boolean run = run();
 		    	
-		    	
-		    	IJ.save(resultImage, resultFolder+filename[0]+"-transformed."+filename[1]);
+		    	if ( run ) {
+		    		IJ.save(resultImage, resultFolder+filename[0]+"-transformed."+filename[1]);
+		    	} else {
+		    		IJ.log("chessboard not found in "+file.getName());
+		    		IJ.save(resultImage, resultFolder+filename[0]+"-notFound."+filename[1]);
+		    	}
 		    	
 		    }
 		}
@@ -105,21 +106,17 @@ public class Projekt10_ implements PlugIn {
 		
 	}
 	
-	private void run() {
+	private Boolean run() {
 		// optimize image
-		ImagePlus tmpImp = optimizeImg(imp.duplicate() );
-		
-		// set as current image
-		//optImp.setActivated();
-		//WindowManager.setTempCurrentImage(optImp);
+		linescanImage = optimizeImg(imp.duplicate() );
 		
 		// get vertical matches as lines
 		ArrayList<Line> vHits;
-		vHits = getVMatches(tmpImp);
+		vHits = getVMatches(linescanImage);
 		
 		// get horizontal matches - mh lecker Matjes...
 		ArrayList<Line> hHits;
-		hHits = getHMatches(tmpImp);
+		hHits = getHMatches(linescanImage);
            
         // filter horizontal matches, if they dont cross any vertical match
         ArrayList<Line> hHitsFiltered = new ArrayList<Line>();
@@ -166,14 +163,13 @@ public class Projekt10_ implements PlugIn {
         if ( vHits.size() == 0 || hHits.size() == 0 ) {
         	// -> not found
         	IJ.showMessage("Projekt 10", "Schessboard not found...");
-        	return;
+        	return false;
         }
         
-        
-        ImageConverter ic = new ImageConverter(tmpImp);
+        ImageConverter ic = new ImageConverter(linescanImage);
         ic.convertToRGB();
         
-        ImageProcessor ipN = tmpImp.getProcessor();
+        ImageProcessor ipN = linescanImage.getProcessor();
         
         ipN.setColor(Color.RED);
         for (Line line : vHits) {
@@ -185,13 +181,6 @@ public class Projekt10_ implements PlugIn {
         	ipN.drawLine(line.x1, line.y1, line.x2, line.y2);
         }
 		
-		
-		
-		// create result image
-		//ImagePlus targetImp = optimizeImg(impOriginal.duplicate() );
-		//ImageConverter icT = new ImageConverter(targetImp);
-        //icT.convertToGray8();
-		
 		//get edges
         Point2D[] ps = new Point2D[4];
         ps[0]  = new Point( hHits.get(0).x1, vHits.get(0).y1 );
@@ -201,7 +190,6 @@ public class Projekt10_ implements PlugIn {
         
         Point2D[] qs = new Point2D[4];
         int yStretch= (int) ( ((float)yFields/(float)xFields) * (ps[2].getX()-ps[3].getX()));
-		//IJ.log(((float)yFields/(float)xFields)+" - "+(ps[2].getX()-ps[3].getX())+" = "+yStretch);
 		
 		qs[0] = new Point((int)ps[3].getX(), (int)ps[3].getY()-yStretch);
 		qs[1] = new Point((int)ps[2].getX(), (int)ps[2].getY()-yStretch);
@@ -215,6 +203,7 @@ public class Projekt10_ implements PlugIn {
 		// show tmp image
 		//tmpImp.setTitle("image filtered");
 		//tmpImp.show();
+		return true;
 	}
 	
 	private ImagePlus optimizeImg(ImagePlus imp) {
@@ -258,7 +247,6 @@ public class Projekt10_ implements PlugIn {
 					count=1;
 					colors.add( new ColorCounter(prevVal, j, prevCount) );
 				}
-				
 				prevVal = gw;
 			}
 			
@@ -300,7 +288,6 @@ public class Projekt10_ implements PlugIn {
 					if ( lastBoxCount < curBoxCount/2|| lastBoxCount > 2*curBoxCount ) {
 						continue colorLoop;
 					}
-					
 				}
 				
 				// all chessfields / 3 should fit all chess fields size
@@ -315,9 +302,7 @@ public class Projekt10_ implements PlugIn {
 				//IJ.log("MATCH, x="+i+", y="+colCounts.get(u).start);
 				allHits.add(new Line( colors.get(u-4).start-colors.get(u-4).count, i, colors.get(u).start-1, i));								
 			}
-			
 		}
-		
 		
 		return allHits;
 	}
@@ -327,18 +312,13 @@ public class Projekt10_ implements PlugIn {
 		ArrayList<Line> allHits = new ArrayList<Line>();
 		int prevVal;
 		int count = 0;
-		int prevCount = 0;
-		/*int hits = 0;
-		float chessFieldVarianz;
-		int startLine = -1;*/		
+		int prevCount = 0;	
 		
 		for (int i=0; i < ip.getWidth(); i++) {
 			List<ColorCounter> colors = new ArrayList<ColorCounter>();
 			prevVal = -1;
-			//hits = 0;
 			count = 0;
 			prevCount = 0;
-			//startLine = -1;
 			for (int j=2*(ip.getHeight()/3); j < ip.getHeight(); j++) {
 				int gw = ip.getPixel(i,j);
 				gw = (gw >= thresholdValue)? 1 : 0; // 0 - schwarz, 1 - weiss
@@ -347,29 +327,10 @@ public class Projekt10_ implements PlugIn {
 				if ( gw == prevVal ) {
 					count++;
 				} else {
-					
-					/*chessFieldVarianz = count/4;
-					if ( count > minFieldHeight && ( count >= prevCount-chessFieldVarianz && count <= prevCount+chessFieldVarianz ) ) {
-						
-						if ( hits == 0 ) {
-							startLine = j-(count+prevCount);
-						}
-						hits++;
-					} else {
-						hits=0;
-					}
-					if ( hits == 4 ) {
-						IJ.log("x="+i+", y="+j+" ,hits:"+hits);
-						//IJ.log("Startline:"+startLine);
-						//allHits.add(new Line(i, startLine, i, j));
-					}*/									
-					
 					prevCount=count;					
 					count=1;
 					colors.add( new ColorCounter(prevVal, j, prevCount) );
 				}
-				
-				//prevCount++;
 				prevVal = gw;
 			}
 			
@@ -426,46 +387,9 @@ public class Projekt10_ implements PlugIn {
 				//IJ.log("MATCH, x="+i+", y="+colCounts.get(u).start);
 				allHits.add(new Line(i, colors.get(u-6).start-colors.get(u-6).count, i, colors.get(u).start-1));								
 			}
-			/*
-			int curRowI = 0;
-			int colI = 0;
-			int curColorVal = -1;
-			int prevCololorVal = -1;
-			for (ColorCounter col : colors) {
-				curRowI += col.count;
-				
-				if ( colI >= 4 ) {
-					int sum5Fields = 0;
-					boolean isPattern = true;
-					for (int k = colI; k >= colI-4; k--) {
-						//sum5Fields += 
-						chessFieldVarianz = col.count/4;
-						if ( 	col.count < minFieldHeight ||
-								col.count < colors.get(k).count - chessFieldVarianz || col.count > colors.get(k).count + chessFieldVarianz ) {
-							
-								isPattern = false;
-							
-						} else {
-							sum5Fields += colors.get(k).count;
-						}
-					}
-					
-					if ( isPattern ) {
-						IJ.log("Hit on "+i);
-						//allHits.add(new Line(i, curRowI-sum5Fields, i, curRowI));
-						//allHits.add(new Line(i, col.start, i, col.start-sum5Fields));
-					}
-				}
-				prevCololorVal = col.color;
-				colI++;
-			}
-			*/
-			
 		}
 		
-		
-		return allHits;
-		
+		return allHits;		
 	}
 	
 	public void projectiveTransforming(Point2D[] ps, Point2D[] qs) {
@@ -498,8 +422,6 @@ public class Projekt10_ implements PlugIn {
             transformedIP.setPixels(i, fp2);                 // convert back from float (unless ip is a FloatProcessor)
         }
         resultImage = new ImagePlus("Projekt 10 - Result", transformedIP);
-        //return new ImagePlus("Projekt 10 - Result", transformedIP);
-		
 	}
 	
 	
